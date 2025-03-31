@@ -3,6 +3,41 @@ import random
 from spacy.util import minibatch
 from spacy.training import Example
 from word2number import w2n
+import re
+def normalize_price(price_text):
+    price_text = price_text.lower()
+    
+
+    numeric_pattern = re.compile(r'\d{1,3}(?:,\d{3})*(?:\.\d+)?')
+    numeric_match = numeric_pattern.search(price_text)
+    
+    if not numeric_match:
+        return None
+    numeric_str = numeric_match.group(0).replace(',', '')
+    
+    try:
+ 
+        price_value = float(numeric_str)
+        
+
+        if re.search(r'l|lac|lakh|lakhs|hundred thousand|hundred thousands', price_text):
+            price_value *= 100000
+        elif re.search(r'cr|crore|crores|c', price_text):
+            price_value *= 10000000
+        elif re.search(r'm|million|millions|mil', price_text):
+            price_value *= 1000000
+        elif re.search(r'b|billion|billions', price_text):
+            price_value *= 1000000000
+        elif re.search(r't|trillion|trillions', price_text):
+            price_value *= 1000000000000
+        if price_value.is_integer():
+            return int(price_value)
+        return price_value
+        
+    except ValueError:
+        return None
+    
+
 
 def fine_tune_spacy_ner(train_data, model_path='en_core_web_md', iterations=30):
     """
@@ -51,6 +86,8 @@ def fine_tune_spacy_ner(train_data, model_path='en_core_web_md', iterations=30):
 
     return nlp
 
+# def text_preprocessing(text):
+    
 # Expanded training data with more precise price entities
 train_data = [
     # Base pattern examples with verified indices
@@ -253,8 +290,10 @@ test_sentences = [
     "The 1BHK in OMR for 45 lakhs is fully furnished machan, no need to spend extra.",
     
     # Phone conversations
-    "Yes sir, we have multiple options - a 2BHK in Wakad for 68L, another one in Baner for 82L, and if you're interested in 3BHK, we have one in Aundh for 1.25 cr.",
+    "Yes sir, we have multiple options - a 2BHK in Wakad for 68L, another one in Baner for 82 lacs, and if you're interested in 3BHK, we have one in Aundh for 1.25 cr.",
     "Madam, the possession date for your 1BHK in Thoraipakkam costing 52L is delayed by 3 months, we apologize for the inconvenience."
+
+    "its a 2bhk for 75 lacs in surat, and 3bhk for 1.4 cr in kochi",
 ]
 
 # Inference
@@ -264,8 +303,11 @@ for text in test_sentences:
     doc = trained_nlp(text)
     print(f'\nText: {text}')
     print('Entities:', [(ent.text, ent.label_) for ent in doc.ents])
-
-            
-           
-               
+    for ent in doc.ents:
+     if ent.label_ == 'PRICE':
+        normalized_price = normalize_price(ent.text)
+        if normalized_price is not None:
+            print(f"Original: {ent.text}")
+            print(f"Normalized: {normalized_price}")
     
+   
