@@ -4,12 +4,12 @@ from spacy.util import minibatch
 from spacy.training import Example
 from word2number import w2n
 
-def fine_tune_spacy_ner(train_data, model_path='en_core_web_sm', iterations=50):
+def fine_tune_spacy_ner(train_data, model_path='en_core_web_md', iterations=30):
     """
     Fine-tune an existing SpaCy NER model with custom entities
     Improved to capture full price entities
     """
-    nlp = spacy.load(model_path)
+    nlp = spacy.load(model_path, disable=["tok2vec", "tagger", "parser", "attribute_ruler", "lemmatizer"])
 
     # Ensure NER pipeline exists
     if 'ner' not in nlp.pipe_names:
@@ -22,7 +22,7 @@ def fine_tune_spacy_ner(train_data, model_path='en_core_web_sm', iterations=50):
         for ent in annotations.get('entities', []):
             if ent[2] not in ner.labels:
                 ner.add_label(ent[2])
-                print(f"Added new label: {ent[2]}")
+                # print(f"Added new label: {ent[2]}")
 
     # Disable other pipeline components
     other_pipes = [pipe for pipe in nlp.pipe_names if pipe != 'ner']
@@ -36,7 +36,7 @@ def fine_tune_spacy_ner(train_data, model_path='en_core_web_sm', iterations=50):
             losses = {}
 
             # Batch training
-            batches = minibatch(train_data, size=2)
+            batches = minibatch(train_data, size=8)
             for batch in batches:
                 examples = []
                 for text, annotations in batch:
@@ -45,88 +45,162 @@ def fine_tune_spacy_ner(train_data, model_path='en_core_web_sm', iterations=50):
                     examples.append(example)
 
                 # Update model
-                nlp.update(examples, drop=0.5, losses=losses, sgd=optimizer)
+                nlp.update(examples, drop=0.25, losses=losses, sgd=optimizer)
 
-            print(f'Iteration {itn+1}, Losses: {losses}')
+            # print(f'Iteration {itn+1}, Losses: {losses}')
 
     return nlp
 
 # Expanded training data with more precise price entities
 train_data = [
+    # Base pattern examples with verified indices
     ("1BHK for 75 lacs in Noida", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 16, "PRICE"), (20, 25, "LOCATION")]
+    }),
+    ("2BHK for 90 lacs in Delhi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 16, "PRICE"), (20, 25, "LOCATION")]
+    }),
+    ("3BHK for 1.2 crore in Mumbai", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 18, "PRICE"), (22, 28, "LOCATION")]
+    }),
+    
+    # Price variations with correct indices
+    ("1BHK for ₹75 lacs in Noida", {
         "entities": [(0, 4, "CONFIGURATION"), (9, 17, "PRICE"), (21, 26, "LOCATION")]
     }),
-    ("4BHK @ ₹4.5 crore Mumbai", {
-        "entities": [(0, 4, "CONFIGURATION"), (6, 16, "PRICE"), (17, 23, "LOCATION")]
+    ("2BHK for ₹1.5 crore in Gurgaon", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 30, "LOCATION")]
     }),
-    ("2BHK for 1 crore 20 lakhs Hyderabad", {
-        "entities": [(0, 4, "CONFIGURATION"), (9, 24, "PRICE"), (25, 34, "LOCATION")]
-    }),
-    ("₹1.2 crore 2BHK in Bangalore", {
-        "entities": [(0, 10, "PRICE"), (11, 15, "CONFIGURATION"), (19, 28, "LOCATION")]
-    }),
-    ("85 lakhs 3BHK in Chennai", {
-        "entities": [(0, 10, "PRICE"), (11, 15, "CONFIGURATION"), (19, 26, "LOCATION")]
-    }),
-     ("3BHK apartment in Mumbai for ₹1.5 crores by Lodha Group", {
-        "entities": [(0, 4, "CONFIGURATION"), (15, 21, "LOCATION"), 
-                   (26, 37, "PRICE"), (41, 52, "DEVELOPER")]
+    ("3BHK for ₹2.75 crores in Bangalore", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 21, "PRICE"), (25, 34, "LOCATION")]
     }),
     
-    # Price variations
-    ("2BHK flat in Bangalore priced at ₹85 lakhs (DLF)", {
-        "entities": [(0, 4, "CONFIGURATION"), (13, 22, "LOCATION"),
-                   (33, 43, "PRICE"), (46, 49, "DEVELOPER")]
+    # Different word order but same entity pattern
+    ("For 85 lacs, 2BHK in Chennai", {
+        "entities": [(4, 11, "PRICE"), (13, 17, "CONFIGURATION"), (21, 28, "LOCATION")]
     }),
-    ("₹3.25 crore penthouse in Hyderabad", {
-        "entities": [(0, 10, "PRICE"), (22, 31, "LOCATION")]
+    ("In Hyderabad, 3BHK for 1.8 crore", {
+        "entities": [(3, 12, "LOCATION"), (14, 18, "CONFIGURATION"), (23, 32, "PRICE")]
     }),
-    
-    # Developer naming variations
-    ("Prestige's new 4BHK project in Chennai", {
-        "entities": [(0, 8, "DEVELOPER"), (17, 21, "CONFIGURATION"),
-                   (33, 40, "LOCATION")]
-    }),
-    ("Property by Godrej Properties: 2BHK at ₹1.8 cr", {
-        "entities": [(11, 28, "DEVELOPER"), (30, 34, "CONFIGURATION"),
-                   (38, 46, "PRICE")]
+    ("Price is 60 lacs for 1BHK in Pune", {
+        "entities": [(9, 16, "PRICE"), (21, 25, "CONFIGURATION"), (29, 33, "LOCATION")]
     }),
     
-    # Area specifications
-    ("1500 sqft plot available in Whitefield", {
-        "entities": [(0, 9, "AREA"), (27, 37, "LOCATION")]
+    # Variations in price formatting
+    ("4BHK for 2 cr in Kolkata", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 13, "PRICE"), (17, 24, "LOCATION")]
     }),
-    ("3000 sq.ft villa by Sobha in Kochi", {
-        "entities": [(0, 9, "AREA"), (21, 26, "DEVELOPER"),
-                   (30, 35, "LOCATION")]
+    ("2BHK for 1cr in Jaipur", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 12, "PRICE"), (16, 22, "LOCATION")]
     }),
-    
-    # Combined configurations
-    ("2BHK+study apartment in Pune ₹1.25 cr", {
-        "entities": [(0, 9, "CONFIGURATION"), (20, 23, "LOCATION"),
-                   (24, 33, "PRICE")]
-    }),
-    ("3BHK with servant room in Gurgaon", {
-        "entities": [(0, 4, "CONFIGURATION"), (21, 28, "LOCATION")]
+    ("3BHK for 95L in Kochi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 12, "PRICE"), (16, 21, "LOCATION")]
     }),
     
-    # Alternative price formats
-    ("1BHK for 75 lacs in Noida", {
-        "entities": [(0, 4, "CONFIGURATION"), (9, 17, "PRICE"),
-                   (21, 26, "LOCATION")]
+    # With lakhs spelled differently
+    ("1BHK for 45 lakhs in Ahmedabad", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 17, "PRICE"), (21, 30, "LOCATION")]
     }),
-    ("4BHK @ ₹4.5 crore Mumbai", {
-        "entities": [(0, 4, "CONFIGURATION"), (6, 16, "PRICE"),
-                   (17, 23, "LOCATION")]
+    ("2BHK for 75 lakh in Surat", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 16, "PRICE"), (20, 25, "LOCATION")]
     }),
     
-    # Developer abbreviations
-    ("Brig. launches 3BHK in Kolkata", {
-        "entities": [(0, 5, "DEVELOPER"), (16, 20, "CONFIGURATION"),
-                   (24, 31, "LOCATION")]
+    # With spacing variations but correct indices
+    ("1BHK for75lacs in Noida", {
+        "entities": [(0, 4, "CONFIGURATION"), (8, 14, "PRICE"), (18, 23, "LOCATION")]
+    }),
+    ("2BHK for 90lacs in Delhi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 15, "PRICE"), (19, 24, "LOCATION")]
+    }),
+    
+    # Price with currency symbol together
+    ("3BHK for₹1.2crore in Mumbai", {
+        "entities": [(0, 4, "CONFIGURATION"), (8, 17, "PRICE"), (21, 27, "LOCATION")]
+    }),
+    ("2BHK for₹85L in Chandigarh", {
+        "entities": [(0, 4, "CONFIGURATION"), (8, 12, "PRICE"), (16, 26, "LOCATION")]
+    }),
+    
+    # More location variations
+    ("1BHK for 50 lacs in South Delhi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 16, "PRICE"), (20, 31, "LOCATION")]
+    }),
+    ("3BHK for 2.5 crores in East Bangalore", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 37, "LOCATION")]
+    }),
+    
+    # More BHK variations
+    ("1.5BHK for 60 lacs in Thane", {
+        "entities": [(0, 6, "CONFIGURATION"), (11, 18, "PRICE"), (22, 27, "LOCATION")]
+    }),
+    ("2.5BHK for 1.1 crore in Navi Mumbai", {
+        "entities": [(0, 6, "CONFIGURATION"), (11, 20, "PRICE"), (24, 35, "LOCATION")]
+    }),
+    
+    # With 'only' in price
+    ("1BHK for only 40 lacs in Lucknow", {
+        "entities": [(0, 4, "CONFIGURATION"), (14, 21, "PRICE"), (25, 32, "LOCATION")]
+    }),
+    ("2BHK for just ₹95L in Indore", {
+        "entities": [(0, 4, "CONFIGURATION"), (14, 18, "PRICE"), (22, 28, "LOCATION")]
+    }),
+    
+    # Additional configuration formats
+    ("1 BHK for 50 lacs in Bhopal", {
+        "entities": [(0, 5, "CONFIGURATION"), (10, 17, "PRICE"), (21, 27, "LOCATION")]
+    }),
+    ("2 Bedroom for 85 lacs in Nagpur", {
+        "entities": [(0, 9, "CONFIGURATION"), (14, 21, "PRICE"), (25, 31, "LOCATION")]
+    }),
+    
+    # With "apartment" or "flat" mentioned
+    ("1BHK flat for 55 lacs in Vadodara", {
+        "entities": [(0, 4, "CONFIGURATION"), (14, 21, "PRICE"), (25, 33, "LOCATION")]
+    }),
+    ("2BHK apartment for 1.05 crore in Coimbatore", {
+        "entities": [(0, 4, "CONFIGURATION"), (19, 29, "PRICE"), (33, 43, "LOCATION")]
+    }),
+    
+    # With location first
+    ("In Noida, 1BHK for 75 lacs", {
+        "entities": [(3, 8, "LOCATION"), (10, 14, "CONFIGURATION"), (19, 26, "PRICE")]
+    }),
+    ("In Delhi, 2BHK for 90 lacs", {
+        "entities": [(3, 8, "LOCATION"), (10, 14, "CONFIGURATION"), (19, 26, "PRICE")]
+    }),
+    
+    # Million and billion formats
+    ("1BHK for 7.5 million in Noida", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 28, "LOCATION")]
+    }),
+    ("3BHK for 0.2 billion in Mumbai", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 29, "LOCATION")]
+    }),
+    
+    # Crore and lakh in same price
+    ("2BHK for 1 crore 20 lakh in Pune", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 24, "PRICE"), (28, 32, "LOCATION")]
+    }),
+    ("3BHK for 2 crore 50 lacs in Hyderabad", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 24, "PRICE"), (28, 37, "LOCATION")]
+    }),
+    
+    # With rupees spelled out
+    ("1BHK for Rupees 75 lacs in Noida", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 23, "PRICE"), (27, 32, "LOCATION")]
+    }),
+    ("2BHK for Rs. 90 lacs in Delhi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 28, "LOCATION")]
+    }),
+    
+    # With decimal points in lacs
+    ("1BHK for 75.5 lacs in Noida", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 18, "PRICE"), (22, 27, "LOCATION")]
+    }),
+    ("2BHK for 90.25 lacs in Delhi", {
+        "entities": [(0, 4, "CONFIGURATION"), (9, 19, "PRICE"), (23, 28, "LOCATION")]
     }),
 ]
-
 # Train the model
 trained_nlp = fine_tune_spacy_ner(train_data)
 
@@ -135,17 +209,52 @@ trained_nlp.to_disk('fine_tuned_real_estate_ner')
 
 # Test sentences
 test_sentences = [
-
-    "I want to buy a 2BHK apartment in Indiranagar.",
-    "Find me a 3BHK villa in Koramangala for ₹1.2 crores.",
-    "What is the price of a 1200 sqft plot in Whitefield?",
-    "Is there a 4BHK penthouse available in Jayanagar?",
-    "I am interested in a 2500 sqft villa by Prestige Group.",
-    "How much does a Sobha Dream Acres flat cost?",
-    "Can I get an apartment in Sarjapur Road for ₹80 lakhs?",
-    "Who is the developer of Godrej Properties?",
-    "I need a 2000 sqft house in HSR Layout for ₹1.5 crore.",
-    "Tell me about Brigade Group projects in Electronic City."
+    # Real estate listings
+    "Beautiful 2BHK for 87 lacs in Powai with modern amenities and 24/7 security.",
+    "Spacious 3BHK apartment available for ₹1.35 crore in Bandra West, close to the sea.",
+    "1BHK starting from ₹45L onwards in upcoming Godrej project in Thane.",
+    
+    # User queries
+    "Is 1.2 cr for a 2BHK in Indiranagar Bangalore worth it?",
+    "Can I get a decent 1BHK within 50-55 lacs budget in Andheri East?",
+    "What's the average rate for 3BHK in and around Whitefield area?",
+    
+    # Chat conversations
+    "Agent: We have a premium 3BHK available in Koramangala for 1.8 crore.\nBuyer: That's over my budget. Do you have any 2BHK options around 1.1-1.2 cr in the same area?",
+    "I visited that 2BHK in HSR Layout yesterday, they're asking 95L but I think we can negotiate to 90 lacs.",
+    "My friend purchased a 4BHK in Gurugram last month for 2.35 crore, but prices have gone up since then.",
+    
+    # Social media posts
+    "Just booked my dream 3BHK in Hiranandani Gardens for ₹2.25cr! So excited to move in next year. #homeowner",
+    "Housing prices are crazy these days. A friend paid 75L for a 1BHK in Kharadi. Is this normal?",
+    "Anyone looking for property in Vashi? My uncle is selling his 2BHK for 90 lacs, great location near station.",
+    
+    # News articles
+    "Property prices in South Mumbai see 15% increase, with average 2BHK now costing upwards of ₹3 crore.",
+    "Affordable housing project launched in Greater Noida, offering 1BHK apartments at just 35 lacs.",
+    "Luxury 4BHK penthouses in the new Trump Tower project in Worli start from ₹15 crore, targeting ultra-HNI buyers.",
+    
+    # Mixed with irrelevant information
+    "My cousin who works at TCS just purchased a 2BHK for 72 lacs in Hinjewadi, says it's a good investment for the future.",
+    "Despite the 12% interest rate, they decided to take a loan and buy the 3BHK in Electronic City for ₹1.15 crore rather than continue renting.",
+    "The property tax for a 1000 sq ft 2BHK in Yelahanka comes to about ₹8000 per year, while the apartment itself costs around 65 lacs.",
+    
+    # Online forums/reviews
+    "Pros: Great location, well-constructed 3BHK at 1.45 cr is reasonable for Malad West. Cons: Society maintenance is too high.",
+    "Q: Budget 70L for 2BHK in Navi Mumbai, which areas should I look at? A: Try Kharghar or Seawoods.",
+    "I purchased a 1BHK in this society last year for 52L, and the builder has now launched phase 2 starting at 58L for the same configuration.",
+    
+    # With multiple entities of the same type
+    "Comparing real estate in different cities: 2BHK in Bangalore costs around 85-90L, while in Pune you can get the same for 65-70L, and in Mumbai it would be at least 1.2 cr.",
+    "Property appreciation: My 3BHK in Gurgaon purchased at 1.4 crore in 2018 is now valued at 1.8 crore.",
+    
+    # With regional dialect/slang
+    "Bhai, ek solid 2BHK in Andheri for 1.25 cr only, ekdum best deal hai market mein!",
+    "The 1BHK in OMR for 45 lakhs is fully furnished machan, no need to spend extra.",
+    
+    # Phone conversations
+    "Yes sir, we have multiple options - a 2BHK in Wakad for 68L, another one in Baner for 82L, and if you're interested in 3BHK, we have one in Aundh for 1.25 cr.",
+    "Madam, the possession date for your 1BHK in Thoraipakkam costing 52L is delayed by 3 months, we apologize for the inconvenience."
 ]
 
 # Inference
