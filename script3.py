@@ -309,16 +309,65 @@ test_sentences = [
 
 # Inference
 # print(word2number)
-print("\nEntity Predictions:") 
-for text in test_sentences:
+print("\nEntity Predictions:")
+entity_data = []
+
+for idx, text in enumerate(test_sentences):
     doc = trained_nlp(text)
-    print(f'\nText: {text}')
-    print('Entities:', [(ent.text, ent.label_) for ent in doc.ents])
-    for ent in doc.ents:
-     if ent.label_ == 'PRICE':
-        normalized_price = normalize_price(ent.text)
-        if normalized_price is not None:
-            print(f"Original: {ent.text}")
-            print(f"Normalized: {normalized_price}")
+    
+    print(f'\nText {idx+1}: {text}')
+    
+    # Create a numeric entry for this sentence
+    sentence_data = {
+        "id": idx + 1,
+        "text": text,
+        "entities": []
+    }
+    
+    # Print all entities first
+    print('All Entities:', [(ent.text, ent.label_) for ent in doc.ents])
+    
+    # Process each entity and add to the structured data
+    for ent_idx, ent in enumerate(doc.ents):
+        entity_info = {
+            "id": ent_idx + 1,
+            "text": ent.text,
+            "label": ent.label_,
+            "start": ent.start_char,
+            "end": ent.end_char
+        }
+        
+        # Add normalized values for price entities
+        if ent.label_ == 'PRICE':
+            normalized_price = normalize_price(ent.text)
+            if normalized_price is not None:
+                print(f"Original: {ent.text}")
+                print(f"Normalized: {normalized_price}")
+                entity_info["normalized"] = normalized_price
+        
+        # Add normalized values for area entities (if you have this function)
+        if ent.label_ == 'AREA' and 'normalize_area' in globals():
+            normalized_area = normalize_area(ent.text)
+            if normalized_area is not None:
+                print(f"Original Area: {ent.text}")
+                print(f"Normalized Area: {normalized_area}")
+                entity_info["normalized"] = normalized_area
+        
+        # Add the entity to the sentence data
+        sentence_data["entities"].append(entity_info)
+    
+    # Add the sentence data to the overall data array
+    entity_data.append(sentence_data)
+
+# Print the structured data array (you can also save it to JSON if needed)
+print("\nStructured Data Array:")
+import json
+print(json.dumps(entity_data, indent=2))
+
+# Alternatively, you can save this to a file
+with open('entity_predictions.json', 'w') as f:
+    json.dump(entity_data, f, indent=2)
+
+print("\nData saved to entity_predictions.json")
     
    
